@@ -6,6 +6,12 @@ on:
     # Runs every 5 minutes
     - cron: '*/5 * * * *'
   workflow_dispatch: # Allows manual triggering from GitHub UI
+    inputs:
+      test_mode:
+        description: 'Send Test Email (Force Stock)'
+        required: false
+        default: 'false'
+        type: boolean
 
 jobs:
   check-stock:
@@ -26,5 +32,6 @@ jobs:
         env:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }} # Optional, defaults to EMAIL_USER
+          EMAIL_TO: ${{ secrets.EMAIL_TO }} # Optional
+          TEST_MODE: ${{ inputs.test_mode }} # Passes the checkbox value to the script
         run: node scripts/monitor.mjs

@@ -1,5 +1,4 @@
 
-
 import fetch from 'node-fetch'; // GitHub Actions environments usually have this or use native fetch in Node 18+
 import nodemailer from 'nodemailer';
 
@@ -12,6 +11,7 @@ const LOCATIONS = '600|134|973|961|152|994|941|147|388|899|900|952|958|705|701|3
 const EMAIL_USER = process.env.EMAIL_USER;
 const EMAIL_PASS = process.env.EMAIL_PASS; // App Password for Gmail
 const EMAIL_TO = process.env.EMAIL_TO || EMAIL_USER;
+const IS_TEST_MODE = process.env.TEST_MODE === 'true';
 
 async function checkInventory() {
   console.log(`Starting inventory check for SKUs: ${SKUS.join(', ')}...`);
@@ -57,8 +57,20 @@ async function checkInventory() {
       }
     });
 
+    // --- TEST MODE INJECTION ---
+    if (IS_TEST_MODE) {
+      console.log("🧪 TEST MODE ACTIVE: Simulating a fake in-stock item...");
+      inStockItems.push({
+        sku: 'TEST-MODE-SKU-12345',
+        pickup: true,
+        shipping: true,
+        details: { sku: 'TEST-MODE-SKU-12345' }
+      });
+    }
+    // ---------------------------
+
     if (inStockItems.length > 0) {
-      console.log('🎉 STOCK FOUND! Sending email...');
+      console.log(`🎉 STOCK FOUND (${inStockItems.length} items)! Sending email...`);
       await sendEmail(inStockItems);
     } else {
       console.log('No stock found for any SKU.');
@@ -85,21 +97,23 @@ async function sendEmail(items) {
     }
   });
 
+  const isTest = IS_TEST_MODE ? '[TEST EMAIL] ' : '';
+
   const itemListHtml = items.map(item => `
     <div style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 5px;">
       <h3 style="margin: 0;">SKU: ${item.sku}</h3>
       <p><strong>Shipping:</strong> ${item.shipping ? '✅ Available' : '❌ Out of Stock'}</p>
       <p><strong>Pickup:</strong> ${item.pickup ? '✅ Available' : '❌ Out of Stock'}</p>
-      <a href="https://www.bestbuy.ca/en-ca/product/${item.sku}/${item.sku}" style="background-color: #0046be; color: white; padding: 5px 10px; text-decoration: none; border-radius: 3px; display: inline-block; margin-top: 5px;">Buy Now</a>
+      <a href="https://www.bestbuy.ca/en-ca/product/${item.sku}" style="background-color: #0046be; color: white; padding: 5px 10px; text-decoration: none; border-radius: 3px; display: inline-block; margin-top: 5px;">Buy Now</a>
     </div>
   `).join('');
 
   const mailOptions = {
     from: `"BestBuy Tracker" <${EMAIL_USER}>`,
     to: EMAIL_TO,
-    subject: `🚨 STOCK ALERT: ${items.length} Item(s) Available!`,
+    subject: `${isTest}🚨 STOCK ALERT: ${items.length} Item(s) Available!`,
     html: `
-      <h2>Stock Detected!</h2>
+      <h2>${isTest}Stock Detected!</h2>
       <p>The following items are now available:</p>
       ${itemListHtml}
       <p style="font-size: 12px; color: #666;">This check ran via GitHub Actions.</p>
