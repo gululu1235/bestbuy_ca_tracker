@@ -121,6 +121,7 @@ Error generating stack: `+o.message+`
 Status: ${er?"✅ IN STOCK":"❌ Out of Stock"}
 Link: https://www.bestbuy.ca/en-ca/product/${Le.sku}
 `}),ze=`Current Inventory Status (${new Date().toLocaleString()}):
+Postal Code: ${n}
 
 ${Y.join(`
 --------------------------------
