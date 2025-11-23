@@ -95,7 +95,10 @@ Link: https://www.bestbuy.ca/en-ca/product/${item.sku}
 `;
     });
 
-    const body = `Current Inventory Status (${new Date().toLocaleString()}):\n\n${bodyLines.join('\n--------------------------------\n\n')}`;
+    const body = `Current Inventory Status (${new Date().toLocaleString()}):
+Postal Code: ${postalCode}
+
+${bodyLines.join('\n--------------------------------\n\n')}`;
     
     window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
   };

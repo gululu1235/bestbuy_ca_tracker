@@ -114,9 +114,12 @@ async function sendEmail(items) {
     subject: `${isTest}🚨 STOCK ALERT: ${items.length} Item(s) Available!`,
     html: `
       <h2>${isTest}Stock Detected!</h2>
+      <p style="font-size: 14px; color: #333; background-color: #f0f9ff; padding: 8px; border-radius: 4px; display: inline-block;">
+        📍 Target Region: <strong>${POSTAL_CODE}</strong>
+      </p>
       <p>The following items are now available:</p>
       ${itemListHtml}
-      <p style="font-size: 12px; color: #666;">This check ran via GitHub Actions.</p>
+      <p style="font-size: 12px; color: #666; margin-top: 20px;">This check ran via GitHub Actions.</p>
     `
   };
 
