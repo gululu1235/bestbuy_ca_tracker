@@ -1,0 +1,5 @@
+{
+  "name": "BestBuy Inventory Tracker",
+  "description": "Real-time inventory monitoring for Best Buy Canada products with auto-refresh and stock alerts.",
+  "requestFramePermissions": []
+}
