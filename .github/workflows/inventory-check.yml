@@ -2,9 +2,6 @@
 name: BestBuy Inventory Check
 
 on:
-  schedule:
-    # Runs every 6 minutes
-    - cron: '*/6 * * * *'
   workflow_dispatch: # Allows manual triggering from GitHub UI
     inputs:
       test_mode:
