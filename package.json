@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "monitor": "node scripts/monitor.mjs"
+    "monitor": "node scripts/monitor.mjs",
+    "build:aws": "zip -r aws-function.zip scripts node_modules package.json"
   },
   "dependencies": {
     "lucide-react": "^0.344.0",

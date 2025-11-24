@@ -1,20 +1,23 @@
 
-import fetch from 'node-fetch'; // GitHub Actions environments usually have this or use native fetch in Node 18+
+import fetch from 'node-fetch';
 import nodemailer from 'nodemailer';
+import { pathToFileURL } from 'url';
 
 // --- CONFIGURATION ---
 const SKUS = ['18391208', '18391209', '18391210', '18391211'];
 const POSTAL_CODE = 'V3M0B2';
 const LOCATIONS = '600|134|973|961|152|994|941|147|388|899|900|952|958|705|701|318|328|450|451|501|763|796|915|13|929|133|992';
 
-// Email Configuration (Read from Environment Variables for security)
+// Env Vars
 const EMAIL_USER = process.env.EMAIL_USER;
-const EMAIL_PASS = process.env.EMAIL_PASS; // App Password for Gmail
+const EMAIL_PASS = process.env.EMAIL_PASS;
 const EMAIL_TO = process.env.EMAIL_TO || EMAIL_USER;
 const IS_TEST_MODE = process.env.TEST_MODE === 'true';
+// Optional protection for Cloud Function HTTP trigger
+const CRON_SECRET = process.env.CRON_SECRET; 
 
-async function checkInventory() {
-  console.log(`Starting inventory check for SKUs: ${SKUS.join(', ')}...`);
+async function checkInventory(logFn = console.log) {
+  logFn(`Starting inventory check for SKUs: ${SKUS.join(', ')}...`);
 
   const skuParam = SKUS.join('|');
   const params = new URLSearchParams({
@@ -25,7 +28,6 @@ async function checkInventory() {
     skus: skuParam
   });
 
-  // Note: No CORS proxy needed for Node.js
   const url = `https://www.bestbuy.ca/ecomm-api/availability/products?${params.toString()}`;
 
   try {
@@ -39,27 +41,28 @@ async function checkInventory() {
       throw new Error(`API returned ${response.status}: ${response.statusText}`);
     }
 
+    /** @type {any} */
     const data = await response.json();
     const inStockItems = [];
 
-    data.availabilities.forEach(item => {
-      // Logic from your frontend types
-      const hasPickup = item.pickup.purchasable || item.pickup.locations.some(l => l.hasInventory || l.quantityOnHand > 0);
-      const hasShipping = item.shipping.purchasable || item.shipping.status === 'InStock';
+    if (data && data.availabilities) {
+      data.availabilities.forEach(item => {
+        const hasPickup = item.pickup.purchasable || item.pickup.locations.some(l => l.hasInventory || l.quantityOnHand > 0);
+        const hasShipping = item.shipping.purchasable || item.shipping.status === 'InStock';
 
-      if (hasPickup || hasShipping) {
-        inStockItems.push({
-          sku: item.sku,
-          pickup: hasPickup,
-          shipping: hasShipping,
-          details: item
-        });
-      }
-    });
+        if (hasPickup || hasShipping) {
+          inStockItems.push({
+            sku: item.sku,
+            pickup: hasPickup,
+            shipping: hasShipping,
+            details: item
+          });
+        }
+      });
+    }
 
-    // --- TEST MODE INJECTION ---
     if (IS_TEST_MODE) {
-      console.log("🧪 TEST MODE ACTIVE: Simulating a fake in-stock item...");
+      logFn("🧪 TEST MODE ACTIVE: Simulating a fake in-stock item...");
       inStockItems.push({
         sku: 'TEST-MODE-SKU-12345',
         pickup: true,
@@ -67,25 +70,37 @@ async function checkInventory() {
         details: { sku: 'TEST-MODE-SKU-12345' }
       });
     }
-    // ---------------------------
 
     if (inStockItems.length > 0) {
-      console.log(`🎉 STOCK FOUND (${inStockItems.length} items)! Sending email...`);
-      await sendEmail(inStockItems);
+      logFn(`🎉 STOCK FOUND (${inStockItems.length} items)! Sending email...`);
+      await sendEmail(inStockItems, logFn);
+      return { success: true, items: inStockItems.length };
     } else {
-      console.log('No stock found for any SKU.');
+      logFn('No stock found for any SKU.');
+      return { success: true, items: 0 };
     }
 
   } catch (error) {
     console.error('Error fetching inventory:', error);
-    // @ts-ignore
-    process.exit(1);
+    // If running in Google Cloud Functions, throw to let GCP handle logging
+    if (process.env.GOOGLE_FUNCTION_TARGET) {
+      throw error; 
+    } 
+    // If running in AWS Lambda, let the handler catch it
+    else if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+      throw error;
+    }
+    else {
+      // Standalone/GitHub Actions
+      // @ts-ignore
+      process.exit(1);
+    }
   }
 }
 
-async function sendEmail(items) {
+async function sendEmail(items, logFn = console.log) {
   if (!EMAIL_USER || !EMAIL_PASS) {
-    console.warn('⚠️ Missing EMAIL_USER or EMAIL_PASS environment variables. Skipping email.');
+    logFn('⚠️ Missing EMAIL_USER or EMAIL_PASS environment variables. Skipping email.');
     return;
   }
 
@@ -119,16 +134,55 @@ async function sendEmail(items) {
       </p>
       <p>The following items are now available:</p>
       ${itemListHtml}
-      <p style="font-size: 12px; color: #666; margin-top: 20px;">This check ran via GitHub Actions.</p>
+      <p style="font-size: 12px; color: #666; margin-top: 20px;">Check triggered via Cloud Monitor.</p>
     `
   };
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log('✅ Email sent successfully!');
+    logFn('✅ Email sent successfully!');
   } catch (error) {
     console.error('❌ Failed to send email:', error);
   }
 }
 
-checkInventory();
+// --- GOOGLE CLOUD FUNCTION ENTRY POINT ---
+export const inventoryCheckHttp = async (req, res) => {
+  // Security Check: If CRON_SECRET is set in env, it must be present in query params
+  if (CRON_SECRET && req.query.secret !== CRON_SECRET) {
+    console.warn("Unauthorized access attempt.");
+    return res.status(403).send('Forbidden: Invalid Secret');
+  }
+
+  try {
+    const result = await checkInventory((msg) => console.log(msg));
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+};
+
+// --- AWS LAMBDA ENTRY POINT ---
+export const handler = async (event) => {
+  console.log("AWS Lambda triggered");
+  try {
+    const result = await checkInventory((msg) => console.log(msg));
+    return {
+      statusCode: 200,
+      body: JSON.stringify(result),
+    };
+  } catch (error) {
+    console.error("Lambda Error:", error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: error.message }),
+    };
+  }
+};
+
+// --- STANDALONE EXECUTION (For GitHub Actions or Local) ---
+// Only run if this file is executed directly by Node
+// @ts-ignore
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  checkInventory();
+}
